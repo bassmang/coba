@@ -24,6 +24,7 @@ class VowpalMediator:
         self._vw = None
         self._ns_offsets: Dict[str,int] = {}
         self._curr_ns_offset = 0
+        self._curr_ac_offset = 1000000
 
         PackageChecker.vowpalwabbit('VowpalMediator.__init__')
 
@@ -133,8 +134,14 @@ class VowpalMediator:
                 yield (ns, [f"{k}={v}" if v.__class__ is str else (k, v) for k,v in feats if v!= 0])
 
     def _get_ns_offset(self, namespace:str, length:int) -> Sequence[int]:
-        value = self._ns_offsets.setdefault(namespace, self._curr_ns_offset)
-        self._curr_ns_offset += length
+        #value = self._ns_offsets.setdefault(namespace, self._curr_ns_offset)
+        #self._curr_ns_offset += length
+        if (namespace == 'x'):
+            value = self._ns_offsets.setdefault(namespace, self._curr_ns_offset)
+            self._curr_ns_offset += length
+        else: #(namespace == 'a')
+            value = self._ns_offsets.setdefault(namespace, self._curr_ac_offset)
+            self._curr_ac_offset += length
         return value
 
     def __reduce__(self):
