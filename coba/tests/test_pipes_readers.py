@@ -241,6 +241,24 @@ class ArffReader_Tests(unittest.TestCase):
 
         self.assertEqual(expected, list(ArffReader().filter(lines)))
 
+    def test_dense_with_spaces_in_quotes(self):
+        lines = [
+            "@relation test",
+            "@attribute a numeric",
+            "@attribute B numeric",
+            "@attribute c {' B', ' C', ' D'}",
+            "@data",
+            "1, 2, ' B'",
+            "2, 3, ' C'",
+        ]
+
+        expected = [
+            [1,2,(1,0,0)],
+            [2,3,(0,1,0)]
+        ]
+
+        self.assertEqual(expected, list(ArffReader().filter(lines)))
+
     def test_dense_sans_empty_lines(self):
         lines = [
             "@relation test",
@@ -275,7 +293,7 @@ class ArffReader_Tests(unittest.TestCase):
             [2,3,None]
         ]
 
-        self.assertEqual(expected, list(ArffReader().filter(lines)))
+        self.assertEqual(expected, list(ArffReader(missing_value=None).filter(lines)))
 
     def test_dense_with_empty_lines(self):
         lines = [

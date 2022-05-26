@@ -144,9 +144,6 @@ class VowpalMediator:
             self._curr_ac_offset += length
         return value
 
-    def __reduce__(self):
-        return (VowpalMediator, ())
-
 class VowpalArgsLearner(Learner):
     """A friendly wrapper around Vowpal Wabbit's python interface to support CB learning.
 

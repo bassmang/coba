@@ -7,9 +7,17 @@ from pathlib import Path
 
 from coba.pipes import ListSink
 from coba.contexts import CobaContext, IndentLogger
-from coba.exceptions import CobaException
+from coba.exceptions import CobaException, CobaExit
 
-from coba.experiments.results import Result, Table, InteractionsTable, TransactionIO, TransactionIO_V3, TransactionIO_V4
+from coba.experiments.results import TransactionIO, TransactionIO_V3, TransactionIO_V4
+from coba.experiments.results import Result, Table, InteractionsTable
+from coba.experiments.results import MatplotlibPlotter
+
+class TestPlotter:
+    def __init__(self):
+        self.plot_calls = []
+    def plot(self, *args) -> None:
+        self.plot_calls.append(args)
 
 class Table_Tests(unittest.TestCase):
 
@@ -298,6 +306,251 @@ class Table_Pandas_Tests(unittest.TestCase):
         #best time on my laptop was 0.15
         self.assertLess(time,1)
 
+@unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
+class MatplotlibPlotter_Tests(unittest.TestCase):
+
+    def test_no_matplotlib(self):
+        with unittest.mock.patch('importlib.import_module', side_effect=ImportError()):
+            with self.assertRaises(CobaExit):
+                MatplotlibPlotter().plot(None,None,None,None,None,None,None,None)
+
+    def test_plot_lines_title_xlabel_ylabel(self):
+        with unittest.mock.patch('matplotlib.pyplot.show') as show:
+            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
+                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+                    mock_ax = plt_figure().add_subplot()
+
+                    mock_ax.get_xticks.return_value = [1,2]
+                    mock_ax.get_xlim.return_value   = [2,2]
+
+                    lines = [
+                        ([1,2], [5,6], None, "B", 1.00, 'L1'),
+                        ([3,4], [7,8], None, "R", 0.25, 'L2')
+                    ]
+
+                    MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",None,None,None)
+
+                    plt_figure().add_subplot.assert_called_with(111)
+
+                    self.assertEqual(([1,2],[5,6]), mock_ax.plot.call_args_list[0][0])
+                    self.assertEqual('B'          , mock_ax.plot.call_args_list[0][1]["color"])
+                    self.assertEqual(1            , mock_ax.plot.call_args_list[0][1]["alpha"])
+                    self.assertEqual('L1'         , mock_ax.plot.call_args_list[0][1]["label"])
+
+                    self.assertEqual(([3,4],[7,8]), mock_ax.plot.call_args_list[1][0])
+                    self.assertEqual('R'          , mock_ax.plot.call_args_list[1][1]["color"])
+                    self.assertEqual(.25          , mock_ax.plot.call_args_list[1][1]["alpha"])
+                    self.assertEqual('L2'         , mock_ax.plot.call_args_list[1][1]["label"])
+
+                    mock_ax.set_xticks.called_once_with([2,2])
+                    mock_ax.set_title.colled_once_with('title')
+                    mock_ax.set_xlabel.called_once_with('xlabel')
+                    mock_ax.set_ylabel.called_once_with('ylabel')
+
+                    self.assertEqual(1, show.call_count)
+                    self.assertEqual(0, savefig.call_count)
+
+    def test_plot_lines_err_title_xlabel_ylabel(self):
+        with unittest.mock.patch('matplotlib.pyplot.show') as show:
+            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
+                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+                    mock_ax = plt_figure().add_subplot()
+
+                    mock_ax.get_xticks.return_value = [1,2]
+                    mock_ax.get_xlim.return_value   = [2,2]
+
+                    lines = [
+                        ([1,2], [5,6], [10,11], "B", 1.00, 'L1'),
+                        ([3,4], [7,8], [12,13], "R", 0.25, 'L2')
+                    ]
+
+                    MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",None,None,None)
+
+                    plt_figure().add_subplot.assert_called_with(111)
+
+                    self.assertEqual(([1,2],[5,6]), mock_ax.errorbar.call_args_list[0][0])
+                    self.assertEqual([10,11]      , mock_ax.errorbar.call_args_list[0][1]["yerr"])
+                    self.assertEqual('B'          , mock_ax.errorbar.call_args_list[0][1]["color"])
+                    self.assertEqual(1            , mock_ax.errorbar.call_args_list[0][1]["alpha"])
+                    self.assertEqual('L1'         , mock_ax.errorbar.call_args_list[0][1]["label"])
+
+                    self.assertEqual(([3,4],[7,8]), mock_ax.errorbar.call_args_list[1][0])
+                    self.assertEqual([12,13]      , mock_ax.errorbar.call_args_list[1][1]["yerr"])
+                    self.assertEqual('R'          , mock_ax.errorbar.call_args_list[1][1]["color"])
+                    self.assertEqual(.25          , mock_ax.errorbar.call_args_list[1][1]["alpha"])
+                    self.assertEqual('L2'         , mock_ax.errorbar.call_args_list[1][1]["label"])
+
+                    mock_ax.set_xticks.called_once_with([2,2])
+                    mock_ax.set_title.colled_once_with('title')
+                    mock_ax.set_xlabel.called_once_with('xlabel')
+                    mock_ax.set_ylabel.called_once_with('ylabel')
+
+                    self.assertEqual(1, show.call_count)
+                    self.assertEqual(0, savefig.call_count)
+
+    def test_plot_xlim1(self):
+        with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+            lines = [
+                ([1,2], [5,6], None, "B", 1.00, 'L1'),
+                ([3,4], [7,8], None, "R", 0.25, 'L2')
+            ]
+
+            mock_ax = plt_figure().add_subplot()
+            mock_ax.get_xticks.return_value = [1,2]
+            mock_ax.get_xlim.return_value   = [2,2]
+            MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",(2,3),None,None)
+            self.assertEqual(([2],[6]), mock_ax.plot.call_args_list[0][0])
+            self.assertEqual(([3],[7]), mock_ax.plot.call_args_list[1][0])
+
+            lines = [
+                ([1,2], [5,6], [4,3], "B", 1.00, 'L1'),
+                ([3,4], [7,8], [2,1], "R", 0.25, 'L2')
+            ]
+
+    def test_plot_xlim2(self):
+        with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+            lines = [
+                ([1,2], [5,6], [4,3], "B", 1.00, 'L1'),
+                ([3,4], [7,8], [2,1], "R", 0.25, 'L2')
+            ]
+
+            mock_ax = plt_figure().add_subplot()
+            mock_ax.get_xticks.return_value = [1,2]
+            mock_ax.get_xlim.return_value   = [2,2]
+            MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",(3,4),None,None)
+            self.assertEqual(([3,4],[7,8]), mock_ax.errorbar.call_args_list[0][0])
+            self.assertEqual([2,1]        , mock_ax.errorbar.call_args_list[0][1]["yerr"])
+
+    def test_plot_ylim(self):
+        with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+            lines = [
+                ([1,2], [5,6], None, "B", 1.00, 'L1'),
+                ([3,4], [7,8], None, "R", 0.25, 'L2')
+            ]
+
+            mock_ax = plt_figure().add_subplot()
+            mock_ax.get_xticks.return_value = [1,2]
+            mock_ax.get_xlim.return_value   = [2,2]
+            MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",None,(6,7),None)
+            self.assertEqual(([2],[6]), mock_ax.plot.call_args_list[0][0])
+            self.assertEqual(([3],[7]), mock_ax.plot.call_args_list[1][0])
+
+    def test_plot_ax(self):
+        with unittest.mock.patch('matplotlib.pyplot.show') as show:
+            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
+                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+                    mock_ax = plt_figure().add_subplot()
+                    self.assertEqual(1, plt_figure().add_subplot.call_count)
+
+                    mock_ax.get_xticks.return_value = [1,2]
+                    mock_ax.get_xlim.return_value   = [2,2]
+
+                    lines = [
+                        ([1,2], [5,6], None, "B", 1.00, 'L1'),
+                        ([3,4], [7,8], None, "R", 0.25, 'L2')
+                    ]
+
+                    MatplotlibPlotter().plot(mock_ax,lines,"title","xlabel","ylabel",None,None,None)
+
+                    self.assertEqual(1, plt_figure().add_subplot.call_count)
+
+                    self.assertEqual(([1,2],[5,6]), mock_ax.plot.call_args_list[0][0])
+                    self.assertEqual('B'          , mock_ax.plot.call_args_list[0][1]["color"])
+                    self.assertEqual(1            , mock_ax.plot.call_args_list[0][1]["alpha"])
+                    self.assertEqual('L1'         , mock_ax.plot.call_args_list[0][1]["label"])
+
+                    self.assertEqual(([3,4],[7,8]), mock_ax.plot.call_args_list[1][0])
+                    self.assertEqual('R'          , mock_ax.plot.call_args_list[1][1]["color"])
+                    self.assertEqual(.25          , mock_ax.plot.call_args_list[1][1]["alpha"])
+                    self.assertEqual('L2'         , mock_ax.plot.call_args_list[1][1]["label"])
+
+                    mock_ax.set_xticks.called_once_with([2,2])
+                    mock_ax.set_title.colled_once_with('title')
+                    mock_ax.set_xlabel.called_once_with('xlabel')
+                    mock_ax.set_ylabel.called_once_with('ylabel')
+
+                    self.assertEqual(0, show.call_count)
+                    self.assertEqual(0, savefig.call_count)
+
+    def test_plot_bad_xlim(self):
+
+        CobaContext.logger = IndentLogger()
+        CobaContext.logger.sink = ListSink()
+
+        plotter = MatplotlibPlotter()
+        plotter.plot(None, [[]], 'abc', 'def', 'efg', (1,0), (0,1), None)
+
+        expected_log = "The xlim end is less than the xlim start. Plotting is impossible."
+
+        self.assertEqual(expected_log, CobaContext.logger.sink.items[0])
+
+    def test_plot_bad_ylim(self):
+
+        CobaContext.logger = IndentLogger()
+        CobaContext.logger.sink = ListSink()
+
+        plotter = MatplotlibPlotter()
+        plotter.plot(None, [[]], 'abc', 'def', 'efg', (0,1), (1,0), None)
+
+        expected_log = "The ylim end is less than the ylim start. Plotting is impossible."
+
+        self.assertEqual(expected_log, CobaContext.logger.sink.items[0])
+
+    def test_plot_filename(self):
+        with unittest.mock.patch('matplotlib.pyplot.show') as show:
+            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
+                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+                    mock_ax = plt_figure().add_subplot()
+
+                    mock_ax.get_xticks.return_value = [1,2]
+                    mock_ax.get_xlim.return_value   = [2,2]
+
+                    lines = [
+                        ([1,2], [5,6], None, "B", 1.00, 'L1'),
+                        ([3,4], [7,8], None, "R", 0.25, 'L2')
+                    ]
+
+                    MatplotlibPlotter().plot(None,lines,"title","xlabel","ylabel",None,None,"abc")
+
+                    plt_figure().add_subplot.assert_called_with(111)
+
+                    self.assertEqual(([1,2],[5,6]), mock_ax.plot.call_args_list[0][0])
+                    self.assertEqual('B'          , mock_ax.plot.call_args_list[0][1]["color"])
+                    self.assertEqual(1            , mock_ax.plot.call_args_list[0][1]["alpha"])
+                    self.assertEqual('L1'         , mock_ax.plot.call_args_list[0][1]["label"])
+
+                    self.assertEqual(([3,4],[7,8]), mock_ax.plot.call_args_list[1][0])
+                    self.assertEqual('R'          , mock_ax.plot.call_args_list[1][1]["color"])
+                    self.assertEqual(.25          , mock_ax.plot.call_args_list[1][1]["alpha"])
+                    self.assertEqual('L2'         , mock_ax.plot.call_args_list[1][1]["label"])
+
+                    mock_ax.set_xticks.called_once_with([2,2])
+                    mock_ax.set_title.colled_once_with('title')
+                    mock_ax.set_xlabel.called_once_with('xlabel')
+                    mock_ax.set_ylabel.called_once_with('ylabel')
+
+                    self.assertEqual(1, show.call_count)
+                    self.assertEqual(1, savefig.call_count)
+
+    def test_no_lines(self):
+        with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+
+            CobaContext.logger = IndentLogger()
+            CobaContext.logger.sink = ListSink()
+
+            plotter = MatplotlibPlotter()
+            plotter.plot(None, [], 'abc', 'def', 'efg', None, None, None)
+
+            self.assertEqual(0, plt_figure().add_subplot.call_count)
+            self.assertEqual(["No data was found for plotting in the given results."], CobaContext.logger.sink.items)
+
 class InteractionTable_Tests(unittest.TestCase):
 
     def test_simple_each_span_none(self):
@@ -307,8 +560,12 @@ class InteractionTable_Tests(unittest.TestCase):
             {"environment_id":0, "learner_id":1, "_packed": {"reward":[2,4,6]}}
         ])
 
-        expected = [[0,0,1,1.5,2], [0,1,3,4.5,6], [1,0,2,3,4]]
-        actual   = table.to_progressive_lists(each=True)
+        expected = [
+            {"learner_id":0,"environment_id":0,"values":[1,1.5,2]},
+            {"learner_id":0,"environment_id":1,"values":[3,4.5,6]},
+            {"learner_id":1,"environment_id":0,"values":[2,3.0,4]}
+        ]
+        actual = table.to_progressive_dicts(each=True)
 
         self.assertCountEqual(expected,actual)
 
@@ -319,8 +576,11 @@ class InteractionTable_Tests(unittest.TestCase):
             {"environment_id":0, "learner_id":1, "_packed": {"reward":[2,4,6]}}
         ])
 
-        expected = [[0,2,3,4], [1,2,3,4]]
-        actual   = table.to_progressive_lists(each=False)
+        expected = [
+            {"learner_id":0,"values":[2,3,4]},
+            {"learner_id":1,"values":[2,3,4]}
+        ]
+        actual = table.to_progressive_dicts(each=False)
 
         self.assertCountEqual(expected,actual)
 
@@ -330,9 +590,12 @@ class InteractionTable_Tests(unittest.TestCase):
             {"environment_id":1, "learner_id":0, "_packed": {"reward":[3,6,9]}},
             {"environment_id":0, "learner_id":1, "_packed": {"reward":[2,4,6]}}
         ])
-
-        expected = [[0,0,1,2,3], [0,1,3,6,9], [1,0,2,4,6]]
-        actual   = table.to_progressive_lists(each=True,span=1)
+        expected = [
+            {"learner_id":0,"environment_id":0,"values":[1,2,3]},
+            {"learner_id":0,"environment_id":1,"values":[3,6,9]},
+            {"learner_id":1,"environment_id":0,"values":[2,4,6]}
+        ]
+        actual = table.to_progressive_dicts(each=True,span=1)
 
         self.assertCountEqual(expected,actual)
 
@@ -342,9 +605,11 @@ class InteractionTable_Tests(unittest.TestCase):
             {"environment_id":1, "learner_id":0, "_packed": {"reward":[3,6,9]}},
             {"environment_id":0, "learner_id":1, "_packed": {"reward":[2,4,6]}}
         ])
-
-        expected = [[0,2,4,6], [1,2,4,6]]
-        actual   = table.to_progressive_lists(each=False,span=1)
+        expected = [
+            {"learner_id":0,"values":[2,4,6]},
+            {"learner_id":1,"values":[2,4,6]}
+        ]
+        actual = table.to_progressive_dicts(each=False,span=1)
 
         self.assertCountEqual(expected,actual)
 
@@ -353,8 +618,11 @@ class InteractionTable_Tests(unittest.TestCase):
             {"environment_id":0, "learner_id":0, "_packed": {"reward":[1,2,3]}},
             {"environment_id":1, "learner_id":0, "_packed": {"reward":[2,4,6]}},
         ])
-        expected = [[0,0,1,3/2,5/2],[0,1,2,6/2,10/2]]
-        actual   = table.to_progressive_lists(each=True,span=2)
+        expected = [
+            {"learner_id":0,"environment_id":0,"values":[1,3/2,5/2]},
+            {"learner_id":1,"environment_id":1,"values":[2,6/2,10/2]}
+        ]
+        actual = table.to_progressive_dicts(each=True,span=2)
 
         self.assertEqual(len(expected), len(actual))
 
@@ -370,8 +638,7 @@ class InteractionTable_Tests(unittest.TestCase):
             {"learner_id":1, "environment_id":0, "_packed": {"reward":[2,4,6]}}
         ])
 
-        expected = [[0,0,1,1.5,2], [1,0,2,3,4], [0,1,3,4.5,6]]
-        actual   = table.to_progressive_pandas(each=True)
+        actual = table.to_progressive_pandas(each=True)
 
         self.assertEqual(actual["learner_id"].tolist(), [0,1,0])
         self.assertEqual(actual["environment_id"].tolist(), [0,0,1])
@@ -387,8 +654,7 @@ class InteractionTable_Tests(unittest.TestCase):
             {"learner_id":1, "environment_id":0, "_packed": {"reward":[2,4,6]}}
         ])
 
-        expected = [[0,2,3,4], [1,2,3,4]]
-        actual   = table.to_progressive_pandas(each=False)
+        actual = table.to_progressive_pandas(each=False)
 
         self.assertEqual(actual["learner_id"].tolist(), [0,1])
         self.assertEqual(actual[1].tolist(), [2,2])
@@ -472,12 +738,12 @@ class TransactionIO_V4_Tests(unittest.TestCase):
 
         result = io.read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
 
-    def test_simple_to_and_from_memory(self):
+    def test_simple_to_and_from_memory_1(self):
         io = TransactionIO_V4()
 
         io.write(["T0",1,2])
@@ -487,7 +753,22 @@ class TransactionIO_V4_Tests(unittest.TestCase):
 
         result = io.read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
+        self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
+        self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
+
+    def test_simple_to_and_from_memory_2(self):
+        io = TransactionIO_V4()
+
+        io.write(["T0",1,2])
+        io.write(["T1",0,{"name":"lrn1"}])
+        io.write(["T2",1,{"source":"test"}])
+        io.write(["T3",[1,0], [{"reward":3},{"reward":4}]])
+
+        result = io.read()
+
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
@@ -495,7 +776,7 @@ class TransactionIO_V4_Tests(unittest.TestCase):
     def test_simple_to_and_from_memory_unknown_transaction(self):
         io = TransactionIO_V4()
 
-        io.write(["T0",1,2])
+        io.write(["T0",{"n_learners":1,"n_environments":2}])
         io.write(["T1",0,{"name":"lrn1"}])
         io.write(["T2",1,{"source":"test"}])
         io.write(["T4",'UNKNOWN'])
@@ -503,7 +784,7 @@ class TransactionIO_V4_Tests(unittest.TestCase):
 
         result = io.read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
@@ -551,7 +832,7 @@ class TransactionIO_Tests(unittest.TestCase):
 
         result = io.read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
@@ -566,7 +847,7 @@ class TransactionIO_Tests(unittest.TestCase):
 
         result = io.read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
@@ -581,16 +862,23 @@ class TransactionIO_Tests(unittest.TestCase):
 
         result = TransactionIO("coba/tests/.temp/transaction.log").read()
 
-        self.assertEqual({"n_learners":1, "n_environments":2}, result.experiment)
+        self.assertEqual({**result.experiment, "n_learners":1, "n_environments":2}, result.experiment)
         self.assertEqual([{'learner_id':0,'name':"lrn1"}], result.learners.to_dicts())
         self.assertEqual([{'environment_id':1,'source':"test"}], result.environments.to_dicts())
         self.assertEqual([{'learner_id':0,'environment_id':1,'index':1,'reward':3},{'learner_id':0,'environment_id':1,'index':2,'reward':4}], result.interactions.to_dicts())
 
 class Result_Tests(unittest.TestCase):
 
+    def test_set_plotter(self):
+        result = Result()
+        
+        self.assertIsNotNone(result._plotter)
+        result.set_plotter(None)
+        self.assertIsNone(result._plotter)
+
     def test_has_interactions_key(self):
 
-        result = Result(1,2, {}, {}, {(0,1): {"_packed":{"reward":[1,1]}},(0,2):{"_packed":{"reward":[1,1]}}})
+        result = Result({}, {}, {(0,1): {"_packed":{"reward":[1,1]}},(0,2):{"_packed":{"reward":[1,1]}}})
 
         self.assertEqual("{'Learners': 0, 'Environments': 0, 'Interactions': 4}", str(result))
 
@@ -600,20 +888,18 @@ class Result_Tests(unittest.TestCase):
         self.assertEqual(len(result._interactions), 4)
 
     def test_has_preamble(self):
-
-        self.assertDictEqual(Result(1,2,{},{},{}).experiment, {"n_learners":1, "n_environments":2})
+        self.assertDictEqual(Result({},{},{},{"n_learners":1, "n_environments":2}).experiment, {"n_learners":1, "n_environments":2})
 
     def test_exception_when_no_file(self):
         with self.assertRaises(Exception):
             Result.from_file("abcd")
 
     def test_filter_fin_sans_n_interactions(self):
-
         sims = {1:{}, 2:{}}
         lrns = {1:{}, 2:{}}
         ints = {(1,1):{}, (1,2):{}, (2,1):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_fin()
 
         self.assertEqual(2, len(original_result.environments))
@@ -635,7 +921,7 @@ class Result_Tests(unittest.TestCase):
             (2,2):{"_packed":{"reward":[1    ]}}
         }
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_fin(2)
 
         self.assertEqual(2, len(original_result.environments))
@@ -655,7 +941,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}}
         ints = {(1,1):{}, (2,1):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_fin()
 
         self.assertEqual(2, len(original_result.environments))
@@ -673,7 +959,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}}
         ints = {(1,1):{}, (1,2):{}, (2,1):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_env(environment_id=2)
 
         self.assertEqual(2, len(original_result.environments))
@@ -693,7 +979,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}}
         ints = {(1,1):{}, (1,2):{}, (2,1):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_env(environment_id=3)
 
         self.assertEqual(2, len(original_result.environments))
@@ -711,7 +997,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}}
         ints = {(1,1):{}, (1,2):{}, (2,1):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_lrn(learner_id=2)
 
         self.assertEqual(2, len(original_result.environments))
@@ -728,7 +1014,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}, 3:{}}
         ints = {(1,1):{}, (1,2):{}, (2,3):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_lrn(learner_id=[2,1])
 
         self.assertEqual(2, len(original_result.environments))
@@ -748,7 +1034,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}, 3:{}}
         ints = {(1,1):{}, (1,2):{}, (2,3):{}}
 
-        original_result = Result(1, 1, sims, lrns, ints)
+        original_result = Result(sims, lrns, ints)
         filtered_result = original_result.filter_lrn(learner_id=5)
 
         self.assertEqual(2, len(original_result.environments))
@@ -766,7 +1052,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}, 3:{}}
         ints = {(1,1):{}, (1,2):{}, (2,3):{}}
 
-        result = Result(1, 1, sims, lrns, ints)
+        result = Result(sims, lrns, ints)
         result_copy = result.copy()
 
         self.assertIsNot(result, result_copy)
@@ -784,7 +1070,7 @@ class Result_Tests(unittest.TestCase):
         lrns = {1:{}, 2:{}, 3:{}}
         ints = {(1,1):{}, (1,2):{}, (2,3):{}}
 
-        self.assertEqual("{'Learners': 3, 'Environments': 2, 'Interactions': 3}", str(Result(1, 1, sims, lrns, ints)))
+        self.assertEqual("{'Learners': 3, 'Environments': 2, 'Interactions': 3}", str(Result(sims, lrns, ints)))
 
     def test_ipython_display_(self):
 
@@ -794,46 +1080,30 @@ class Result_Tests(unittest.TestCase):
             lrns = {1:{}, 2:{}, 3:{}}
             ints = {(1,1):{}, (1,2):{}, (2,3):{}}
 
-            result = Result(1, 1, sims, lrns, ints)
+            result = Result(sims, lrns, ints)
             result._ipython_display_()
             mock.assert_called_once_with(str(result))
 
-    def test_plot_learners_data_empty_result_xlim_none(self):
-        result = Result(None, None, {}, {}, {})
-        self.assertEqual([], list(result._plot_learners_data(xlim=None)))
-
-    def test_plot_learners_data_one_environment_all_default(self):
+    def test_plot_learners_one_environment_all_default(self):
 
         lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
         ints = {(0,1): {"_packed":{"reward":[1,2]}},(0,2):{"_packed":{"reward":[1,2]}}}
 
-        result = Result(None, None, {}, lrns, ints)
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2)))
+        result.set_plotter(plotter)
+        result.plot_learners()
 
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [1,2], [1.,3/2], 0, [(1.,),(3/2,)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [1,2], [1.,3/2], 0, [(1.,),(3/2,)]), plot_learners_data[1])
+        expected_lines = [
+            ([1,2],[1,1.5],None,0,1,'learner_1'),
+            ([1,2],[1,1.5],None,1,1,'learner_2')
+        ]
 
-    def test_plot_learners_data_two_environments_all_default(self):
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
 
-        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
-        ints = {
-            (0,1): {"_packed":{"reward":[1,2]}},
-            (0,2): {"_packed":{"reward":[1,2]}},
-            (1,1): {"_packed":{"reward":[2,3]}},
-            (1,2): {"_packed":{"reward":[2,3]}}
-        }
-
-        result = Result(None, None, {}, lrns, ints)
-
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2)))
-
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [1,2], [3/2,4/2], 0, [(1.,2.),(3/2,5/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [1,2], [3/2,4/2], 0, [(1.,2.),(3/2,5/2)]), plot_learners_data[1])
-
-    def test_plot_learners_data_two_environments_xlim(self):
+    def test_plot_learners_two_environments_all_default(self):
 
         lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
         ints = {
@@ -843,14 +1113,21 @@ class Result_Tests(unittest.TestCase):
             (1,2): {"_packed":{"reward":[2,3]}}
         }
 
-        result = Result(None, None, {}, lrns, ints)
-        plot_learners_data = list(result._plot_learners_data(xlim=(1,2)))
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [2], [4/2], 0, [(3/2,5/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [2], [4/2], 0, [(3/2,5/2)]), plot_learners_data[1])
+        result.set_plotter(plotter)
+        result.plot_learners()
 
-    def test_plot_learners_data_two_environments_err_sd(self):
+        expected_lines = [
+            ([1,2],[3/2,4/2],None,0,1,'learner_1'),
+            ([1,2],[3/2,4/2],None,1,1,'learner_2')
+        ]
+
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
+
+    def test_plot_learners_two_environments_err_sd(self):
 
         lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
         ints = {
@@ -860,38 +1137,49 @@ class Result_Tests(unittest.TestCase):
             (1,2): {"_packed":{"reward":[2,3]}}
         }
 
-        result = Result(None, None, {}, lrns, ints)
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2),err='sd'))
+        result.set_plotter(plotter)
+        result.plot_learners(err='sd')
 
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [1,2], [3/2,4/2], [1/2,1/2], [(1.,2.),(3/2,5/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [1,2], [3/2,4/2], [1/2,1/2], [(1.,2.),(3/2,5/2)]), plot_learners_data[1])
+        expected_lines = [
+            ([1,2],[3/2,4/2],[1/2,1/2],0,1,'learner_1'),
+            ([1,2],[3/2,4/2],[1/2,1/2],1,1,'learner_2')
+        ]
 
-    def test_plot_learners_data_bad_xlim(self):
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
+
+    def test_plot_learners_mixed_env_count(self):
 
         CobaContext.logger = IndentLogger()
         CobaContext.logger.sink = ListSink()
 
         lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
         ints = {
-            (0,1): {"_packed":{"reward":[1,2]}},
-            (0,2): {"_packed":{"reward":[1,2]}},
+            (0,1): {"_packed":{"reward":[1,2,3]}},
             (1,1): {"_packed":{"reward":[2,3]}},
             (1,2): {"_packed":{"reward":[2,3]}}
         }
 
-        result = Result(None, None, {}, lrns, ints)
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(1,0)))
+        result.set_plotter(plotter)
+        result.plot_learners()
 
-        expected_length = 0
-        expected_log = "The xlim end is less than the xlim start. Plotting is impossible."
+        expected_log = "This result contains environments not present for all learners. Environments not present for all learners have been excluded. To supress this warning in the future call <result>.filter_fin() before plotting."
+        expected_lines = [
+            ([1,2],[2,5/2],None,0,1,'learner_1'),
+            ([1,2],[2,5/2],None,1,1,'learner_2')
+        ]
 
-        self.assertEqual(expected_length, len(plot_learners_data))
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
         self.assertEqual(expected_log, CobaContext.logger.sink.items[0])
 
-    def test_plot_learners_mixed_env_length_sans_xlim(self):
+    def test_plot_learners_mixed_env_length(self):
 
         CobaContext.logger = IndentLogger()
         CobaContext.logger.sink = ListSink()
@@ -904,17 +1192,23 @@ class Result_Tests(unittest.TestCase):
             (1,2): {"_packed":{"reward":[2,3]}}
         }
 
-        result = Result(None, None, {}, lrns, ints)
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-        plot_learners_data = list(result._plot_learners_data())
+        result.set_plotter(plotter)
+        result.plot_learners()
 
         expected_log = "The result contains environments of different lengths. The plot only includes data which is present in all environments. To only plot environments with a minimum number of interactions call <result>.filter_fin(n_interactions)."
+        expected_lines = [
+            ([1,2],[3/2,4/2],None,0,1,'learner_1'),
+            ([1,2],[3/2,4/2],None,1,1,'learner_2')
+        ]
 
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual(2, len(plot_learners_data[0][-1]))
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
         self.assertEqual(expected_log, CobaContext.logger.sink.items[0])
 
-    def test_plot_learners_data_sort(self):
+    def test_plot_learners_sort(self):
 
         lrns = {1:{ 'full_name':'learner_2'}, 2:{'full_name':'learner_1'}}
         ints = {
@@ -924,184 +1218,151 @@ class Result_Tests(unittest.TestCase):
             (1,2): {"_packed":{"reward":[2,4]}}
         }
 
-        result = Result(None, None, {}, lrns, ints)
+        plotter = TestPlotter()
+        result  = Result({}, lrns, ints)
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2),sort="name"))
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [1,2], [3/2,5/2], 0, [(1.,2.),(4/2,6/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [1,2], [3/2,4/2], 0, [(1.,2.),(3/2,5/2)]), plot_learners_data[1])
+        result.set_plotter(plotter)
+        
+        result.plot_learners(sort='name')
+        result.plot_learners(sort='id')
+        result.plot_learners(sort='y')
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2),sort="id"))
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_2', [1,2], [3/2,4/2], 0, [(1.,2.),(3/2,5/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_1', [1,2], [3/2,5/2], 0, [(1.,2.),(4/2,6/2)]), plot_learners_data[1])
+        sort0 = [
+            ([1,2],[3/2,5/2],None,1,1,'learner_1'),
+            ([1,2],[3/2,4/2],None,0,1,'learner_2')
+        ]
 
-        plot_learners_data = list(result._plot_learners_data(xlim=(0,2),sort="y"))
-        self.assertEqual(2, len(plot_learners_data))
-        self.assertEqual( ('learner_1', [1,2], [3/2,5/2], 0, [(1.,2.),(4/2,6/2)]), plot_learners_data[0])
-        self.assertEqual( ('learner_2', [1,2], [3/2,4/2], 0, [(1.,2.),(3/2,5/2)]), plot_learners_data[1])
+        sort1 = [
+            ([1,2],[3/2,4/2],None,0,1,'learner_2'),
+            ([1,2],[3/2,5/2],None,1,1,'learner_1')
+        ]
 
-    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
-    def test_plot_learners_not_each(self):
-        with unittest.mock.patch('matplotlib.pyplot.show') as show:
-            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
-                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
-                    lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
-                    ints = {
-                        (0,1): {"_packed":{"reward":[1,2]}},
-                        (0,2): {"_packed":{"reward":[1,2]}},
-                        (1,1): {"_packed":{"reward":[2,3]}},
-                        (1,2): {"_packed":{"reward":[2,3]}}
-                    }
+        self.assertEqual(3, len(plotter.plot_calls))
+        
+        self.assertEqual(sort0, plotter.plot_calls[0][1])
+        self.assertEqual(sort1, plotter.plot_calls[1][1])
+        self.assertEqual(sort0, plotter.plot_calls[2][1])
 
-                    mock_ax = plt_figure().add_subplot()
-                    mock_ax.get_legend.return_value=None
+    def test_plot_learners_each(self):
 
-                    mock_ax.get_xticks.return_value = [1,2]
-                    mock_ax.get_xlim.return_value   = [2,2]
+        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
+        ints = {
+            (0,1): {"_packed":{"reward":[1,2]}},
+            (0,2): {"_packed":{"reward":[1,2]}},
+            (1,1): {"_packed":{"reward":[2,3]}},
+            (1,2): {"_packed":{"reward":[2,3]}}
+        }
 
-                    Result(None, None, {}, lrns, ints).plot_learners(xlim=(0,2))
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-                    plt_figure().add_subplot.assert_called_with(111)
+        result.set_plotter(plotter)
+        result.plot_learners(each=True,sort='id')
 
-                    self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[0][0])
-                    self.assertEqual('learner_1'     , mock_ax.errorbar.call_args_list[0][1]["label"])
-                    self.assertEqual(0               , mock_ax.errorbar.call_args_list[0][1]["yerr"])
+        expected_lines = [
+            ([1,2],[1.5,2],None,0,1,'learner_1'),
+            ([1,2],[1,1.5],None,0,.15,None),
+            ([1,2],[2,2.5],None,0,.15,None),
+            ([1,2],[1.5,2],None,1,1,'learner_2'),
+            ([1,2],[1,1.5],None,1,.15,None),
+            ([1,2],[2,2.5],None,1,.15,None)
+        ]
 
-                    self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[1][0])
-                    self.assertEqual('learner_2'     , mock_ax.errorbar.call_args_list[1][1]["label"])
-                    self.assertEqual(0               , mock_ax.errorbar.call_args_list[1][1]["yerr"])
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
 
-                    self.assertEqual(0, mock_ax.plot.call_count)
-                    self.assertIsNone(mock_ax.get_legend())
-                    self.assertEqual(1, mock_ax.legend.call_count)
+    def test_plot_learners_filename(self):
 
-                    mock_ax.set_xticks.called_once_with([2,2])
-                    self.assertEqual(1, show.call_count)
-                    self.assertEqual(0, savefig.call_count)
+        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
+        ints = {
+            (0,1): {"_packed":{"reward":[1,2]}},
+            (0,2): {"_packed":{"reward":[1,2]}},
+            (1,1): {"_packed":{"reward":[2,3]}},
+            (1,2): {"_packed":{"reward":[2,3]}}
+        }
 
-    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
-    def test_plot_learners_each_xlim_ylim(self):
-        with unittest.mock.patch('matplotlib.pyplot.show') as show:
-            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
-                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
-                    lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
-                    ints = {
-                        (0,1): {"_packed":{"reward":[1,2]}},
-                        (0,2): {"_packed":{"reward":[1,2]}},
-                        (1,1): {"_packed":{"reward":[2,3]}},
-                        (1,2): {"_packed":{"reward":[2,3]}}
-                    }
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-                    mock_ax = plt_figure().add_subplot()
+        result.set_plotter(plotter)
+        result.plot_learners(filename="abc")
 
-                    mock_ax.get_xticks.return_value = [1,2]
-                    mock_ax.get_xlim.return_value   = [2,2]
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual("abc", plotter.plot_calls[0][7])
 
-                    Result(None, None, {}, lrns, ints).plot_learners(each=True,xlim=(0,1),ylim=(0,1))
+    def test_plot_learners_ax(self):
 
-                    plt_figure().add_subplot.assert_called_with(111)
+        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
+        ints = {
+            (0,1): {"_packed":{"reward":[1,2]}},
+            (0,2): {"_packed":{"reward":[1,2]}},
+            (1,1): {"_packed":{"reward":[2,3]}},
+            (1,2): {"_packed":{"reward":[2,3]}}
+        }
 
-                    self.assertEqual(([1],[1.5]) , mock_ax.errorbar.call_args_list[0][0])
-                    self.assertEqual('learner_1' , mock_ax.errorbar.call_args_list[0][1]["label"])
-                    self.assertEqual(0           , mock_ax.errorbar.call_args_list[0][1]["yerr"])
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-                    self.assertEqual(([1],[1.5]) , mock_ax.errorbar.call_args_list[1][0])
-                    self.assertEqual('learner_2' , mock_ax.errorbar.call_args_list[1][1]["label"])
-                    self.assertEqual(0           , mock_ax.errorbar.call_args_list[1][1]["yerr"])
+        result.set_plotter(plotter)
+        result.plot_learners(ax=1)
 
-                    self.assertEqual(4, mock_ax.plot.call_count)
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(1, plotter.plot_calls[0][0])
 
-                    mock_ax.set_xticks.called_once_with([2,2])
-                    self.assertEqual(1, show.call_count)
-                    self.assertEqual(0, savefig.call_count)
+    def test_plot_learners_xlim_ylim(self):
 
-    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
-    def test_plot_learners_each_figname(self):
-        with unittest.mock.patch('matplotlib.pyplot.show') as show:
-            with unittest.mock.patch('matplotlib.pyplot.savefig') as savefig:
-                with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
-                    lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
-                    ints = {
-                        (0,1): {"_packed":{"reward":[1,2]}},
-                        (0,2): {"_packed":{"reward":[1,2]}},
-                        (1,1): {"_packed":{"reward":[2,3]}},
-                        (1,2): {"_packed":{"reward":[2,3]}}
-                    }
+        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
+        ints = {
+            (0,1): {"_packed":{"reward":[1,2]}},
+            (0,2): {"_packed":{"reward":[1,2]}},
+            (1,1): {"_packed":{"reward":[2,3]}},
+            (1,2): {"_packed":{"reward":[2,3]}}
+        }
 
-                    mock_ax = plt_figure().add_subplot()
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-                    mock_ax.get_xticks.return_value = [1,2]
-                    mock_ax.get_xlim.return_value   = [2,2]
+        result.set_plotter(plotter)
+        result.plot_learners(xlim=(1,2), ylim=(2,3))
 
-                    Result(None, None, {}, lrns, ints).plot_learners(xlim=(0,2),filename='abc')
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual((1,2), plotter.plot_calls[0][5])
+        self.assertEqual((2,3), plotter.plot_calls[0][6])
 
-                    plt_figure().add_subplot.assert_called_with(111)
+    def test_plot_learners_labels(self):
+        lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
+        ints = {
+            (0,1): {"_packed":{"reward":[1,2]}},
+            (0,2): {"_packed":{"reward":[1,2]}},
+            (1,1): {"_packed":{"reward":[2,3]}},
+            (1,2): {"_packed":{"reward":[2,3]}}
+        }
 
-                    self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[0][0])
-                    self.assertEqual('learner_1'     , mock_ax.errorbar.call_args_list[0][1]["label"])
-                    self.assertEqual(0               , mock_ax.errorbar.call_args_list[0][1]["yerr"])
+        plotter = TestPlotter()
+        result = Result({}, lrns, ints)
 
-                    self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[1][0])
-                    self.assertEqual('learner_2'     , mock_ax.errorbar.call_args_list[1][1]["label"])
-                    self.assertEqual(0               , mock_ax.errorbar.call_args_list[1][1]["yerr"])
+        result.set_plotter(plotter)
+        result.plot_learners(labels=['a','b'])
 
-                    self.assertEqual(0, mock_ax.plot.call_count)
+        expected_lines = [
+            ([1,2],[3/2,4/2],None,0,1,'a'),
+            ([1,2],[3/2,4/2],None,1,1,'b')
+        ]
 
-                    mock_ax.set_xticks.called_once_with([2,2])
-                    self.assertEqual(1, show.call_count)
-                    self.assertEqual(1, savefig.call_count)
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
 
-    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
-    def test_plot_learners_ax_provided(self):
-        with unittest.mock.patch('matplotlib.pyplot.show') as show:
-            with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
-
-                mock_ax = unittest.mock.MagicMock()
-
-                lrns = {1:{'full_name':'learner_1'}, 2:{ 'full_name':'learner_2'} }
-                ints = {
-                    (0,1): {"_packed":{"reward":[1,2]}},
-                    (0,2): {"_packed":{"reward":[1,2]}},
-                    (1,1): {"_packed":{"reward":[2,3]}},
-                    (1,2): {"_packed":{"reward":[2,3]}}
-                }
-
-                mock_ax.get_xticks.return_value = [1,2]
-                mock_ax.get_xlim.return_value   = [2,2]
-
-                Result(None, None, {}, lrns, ints).plot_learners(ax=mock_ax,xlim=(0,2))
-
-                self.assertEqual(0, plt_figure().add_subplot.call_count)
-
-                self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[0][0])
-                self.assertEqual('learner_1'     , mock_ax.errorbar.call_args_list[0][1]["label"])
-                self.assertEqual(0               , mock_ax.errorbar.call_args_list[0][1]["yerr"])
-
-                self.assertEqual(([1,2],[1.5,2.]), mock_ax.errorbar.call_args_list[1][0])
-                self.assertEqual('learner_2'     , mock_ax.errorbar.call_args_list[1][1]["label"])
-                self.assertEqual(0               , mock_ax.errorbar.call_args_list[1][1]["yerr"])
-
-                self.assertEqual(1, mock_ax.get_legend().remove.call_count)
-                self.assertEqual(1, mock_ax.legend.call_count)
-                self.assertEqual(0, mock_ax.plot.call_count)
-
-                mock_ax.set_xticks.called_once_with([2,2])
-                self.assertEqual(0, show.call_count)
-
-    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed so we must skip plotting tests")
     def test_plot_learners_empty_results(self):
-        with unittest.mock.patch('matplotlib.pyplot.show') as show:
-            with unittest.mock.patch('matplotlib.pyplot.figure') as plt_figure:
+        plotter = TestPlotter()
+        result = Result({}, {}, {})
 
-                CobaContext.logger = IndentLogger()
-                CobaContext.logger.sink = ListSink()
+        result.set_plotter(plotter)
+        result.plot_learners()
 
-                result = Result(None, None, {}, {}, {})
-                result.plot_learners()
+        expected_lines = []
 
-                self.assertEqual(0, plt_figure().add_subplot.call_count)
-                self.assertEqual([f"No data was found for plotting in the given results: {result}."], CobaContext.logger.sink.items)
+        self.assertEqual(1, len(plotter.plot_calls))
+        self.assertEqual(expected_lines, plotter.plot_calls[0][1])
 
 if __name__ == '__main__':
     unittest.main()

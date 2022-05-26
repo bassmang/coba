@@ -77,24 +77,20 @@ class PipesPool:
         self._no_more_items = False
 
         def maintain_pool():
-
-            finished = lambda: self._completed and (self._stdin._queue.qsize() == 0 or self._terminate)
+            finished = lambda: (self._completed and self._stdin._queue.qsize() == 0) or self._terminate
 
             while not finished():
-
-                if self._terminate:
-                    break
 
                 self._pool = [p for p in self._pool if p.is_alive()]
 
                 for _ in range(self._n_processes-len(self._pool)):
                     args = (filter, self._stdin, self._stdout, self._stderr, self._maxtasksperchild, chunked)
-                    process = Process(target=PipesPool.worker, args=args)
+                    process = Process(target=PipesPool.worker, args=args, daemon=True)
                     process.start()
                     self._pool.append(process)
 
-                #I don't like this but it seems to be
-                #the fastest/simplest way out of all my tests...
+                #I don't like this but it seems to be the
+                #fastest/simplest method out of all of my ideas...
                 time.sleep(0.1)
 
             if not self._terminate:
@@ -107,14 +103,12 @@ class PipesPool:
             self._stdout.write(None)
 
         def populate_tasks():
-
             try:
                 for item in items:
 
                     if self._terminate: break
 
                     try:
-
                         self._stdin.write(pickle.dumps(item))
 
                     except Exception as e:
@@ -143,16 +137,13 @@ class PipesPool:
 
             self._completed = True
 
-        log_thread = Thread(target=Pipes.join(self._stderr, Foreach(self._given_stderr)).run)
-        log_thread.daemon = True
+        log_thread = Thread(target=Pipes.join(self._stderr, Foreach(self._given_stderr)).run, daemon=True)
         log_thread.start()
 
-        pool_thread = Thread(target=maintain_pool)
-        pool_thread.daemon = True
+        pool_thread = Thread(target=maintain_pool, daemon=True)
         pool_thread.start()
 
-        tasks_thread = Thread(target=populate_tasks)
-        tasks_thread.daemon = True
+        tasks_thread = Thread(target=populate_tasks, daemon=True)
         tasks_thread.start()
 
         self._threads.append(log_thread)
@@ -177,6 +168,12 @@ class PipesPool:
         if len(self._threads) > 2:
             self._threads[1].join()
 
+        #If these closes are removed it can take a lot
+        #longer to clean up a termination though it still works.
+        if self._stdin : self._stdin._queue .close()
+        if self._stdout: self._stdout._queue.close()
+        if self._stderr: self._stderr._queue.close()
+
     @property
     def is_terminated(self) -> bool:
         return self._terminate
@@ -184,7 +181,6 @@ class PipesPool:
     @staticmethod
     def worker(filter: Filter, stdin: Source, stdout: Sink, stderr: Sink, maxtasksperchild: Optional[int], chunked:bool):
         try:
-
             for item in islice(map(pickle.loads,stdin.read()),maxtasksperchild):
                 result = filter.filter(item)
 
